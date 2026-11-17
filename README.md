@@ -79,7 +79,7 @@ func handleMsgCallback(ctx *sdk_ipad.HookContext, msg *sdk_ipad.CallBackMsg) err
 
 ### 主动调用 API（每接口一文件）
 
-命名规则：`api_<域>_<方法名snake_case>.go`——如 `SendTextMsg` → `api_message_send_text_msg.go`、`RevokeMsg` → `api_message_revoke_msg.go`；域编号与 `docs/api` 一致；跨接口共享类型集中在 `api_common_types.go`。
+命名规则：`api_<域>_<方法名snake_case>.go`——如 `SendTextMsg` → `api_message_send_text_msg.go`、`RevokeMsg` → `api_message_revoke_msg.go`；域编号与 `docs-public/api` 一致；跨接口共享类型集中在 `api_common_types.go`。
 
 | 域 | 文件前缀 | 接口 |
 |---|---|---|
@@ -145,7 +145,7 @@ func handleMsgCallback(ctx *sdk_ipad.HookContext, msg *sdk_ipad.CallBackMsg) err
 | 路径 | 内容 |
 |---|---|
 | `ARCHITECTURE.md` | 架构说明：分片管理、共享 Worker 池、Hook 机制、消息处理流程、并发安全与生命周期（仓库根目录） |
-
+| `docs-public/` | 对外文档入口 `docs-public/README.md`：仅含 SDK 已封装的接口与回调，已脱敏 |
 
 ## 配置参考（SdkConfig）
 
@@ -161,8 +161,7 @@ func handleMsgCallback(ctx *sdk_ipad.HookContext, msg *sdk_ipad.CallBackMsg) err
 - 本仓库独立携带 `go.mod`/`go.sum`，在仓库目录内单独执行 `go build ./...`、`go test ./...`、`golangci-lint run ./...`。
 - 引用方式：宿主工程 `go get github.com/forage33/sdk-ipad@v0.1.0`（联调期可用 `replace` 指向本地副本）。
 - 独立发版：打语义化 tag（如 `v0.1.0`）并推送，宿主按 tag 升级版本即可，import 路径不变。
-- 协议字段演进时**只改本仓库**（优先契约层文件）；协议文档由作者内部维护，不随仓库发布。
+- 协议字段演进时**只改本仓库**（优先契约层文件）。
 
 ## 联系作者
 
-- 需要 API 接口文档、回调文档或接入支持，请通过 QQ 联系作者发送。
