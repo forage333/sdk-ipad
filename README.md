@@ -145,7 +145,7 @@ func handleMsgCallback(ctx *sdk_ipad.HookContext, msg *sdk_ipad.CallBackMsg) err
 | 路径 | 内容 |
 |---|---|
 | `ARCHITECTURE.md` | 架构说明：分片管理、共享 Worker 池、Hook 机制、消息处理流程、并发安全与生命周期（仓库根目录） |
-| `docs-public/` | 对外文档入口 `docs-public/README.md`：仅含 SDK 已封装的接口与回调，已脱敏 |
+| `docs-public/` | 对外文档入口 `docs-public/README.md`：仅含 SDK 已封装的接口与回调 |
 
 ## 配置参考（SdkConfig）
 
