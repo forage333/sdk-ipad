@@ -1,175 +1,176 @@
-# sdk-ipad — 企业微信 iPad 协议 SDK
+# sdk-ipad — WeCom iPad Protocol SDK
 
-独立 Go 模块（`module github.com/forage33/sdk-ipad`），封装与企微 iPad 协议服务的全部交互：**主动调用 API**、**回调分发机制**、**回调数据契约**、**HTTP 传输适配**。
+A standalone Go module (`module github.com/forage33/sdk-ipad`) that wraps every interaction with a WeCom iPad protocol service: **API calls**, the **callback dispatch pipeline**, the **callback data contracts**, and the **HTTP transport adapter**.
 
-仅依赖标准库 + `go.uber.org/zap` + `github.com/tidwall/gjson`，不依赖任何宿主项目代码，可独立编译、测试、打 tag 发版。仓库地址：<https://github.com/forage33/sdk-ipad>。
+The module depends only on the standard library plus `go.uber.org/zap` and `github.com/tidwall/gjson`. It has no dependency on any host application, so it can be built, tested, and tagged independently. Repository: <https://github.com/forage33/sdk-ipad>.
 
-架构设计（分片管理、共享 Worker 池、Hook 机制、消息处理流程、并发安全与生命周期）详见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+Architecture notes (sharding, shared worker pool, hook mechanism, message flow, concurrency safety, and lifecycle) are documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## 快速开始
+## Quick Start
 
-### 1. 创建 SDK 实例
+### 1. Create an SDK instance
 
 ```go
 cfg := &sdk_ipad.SdkConfig{
-    ShardConfig:   sdk_ipad.DefaultShardConfig(),   // 分片（万号承载建议调大，见 DefaultDispatcherConfig 注释）
+    ShardConfig:   sdk_ipad.DefaultShardConfig(),   // raise the shard count for large account fleets (see DefaultDispatcherConfig)
     WorkerPool:    sdk_ipad.DefaultWorkerPoolConfig(),
     PriorityQueue: sdk_ipad.DefaultPriorityQueueConfig(),
-    Logger:        myLogger, // 可选，*zap.Logger；nil 时回退全局 zap.L()
+    Logger:        myLogger, // optional *zap.Logger; falls back to the global zap.L() when nil
 }
 sdk := sdk_ipad.NewSdkIPadWithConfig(cfg)
 ```
 
-### 2. 主动调用协议接口
+### 2. Call protocol endpoints
 
-所有 API 方法第一个参数均为协议服务地址 `host`（如 `http://{host}:8083`），第二个参数为实例 `uuid`：
+Every API method takes the protocol service address `host` as its first argument (for example `http://{host}:8083`) and the instance `uuid` as its second:
 
 ```go
-// 初始化实例 → 设置回调地址
+// Initialize an instance, then register the callback URL.
 resp, err := sdk.InItWXWork(host, vid, "", "", 0, "", "", "ipad", 0)
 _, err = sdk.SetCallBackURL(host, uuid, sdk_ipad.CallbackConfig{CallbackType: sdk_ipad.CallbackTypeHTTP, URL: callbackURL})
 
-// 发送文本消息
+// Send a text message.
 _, err = sdk.SendTextMsg(host, uuid, sendUserID, "hello", false /* isRoom */)
 ```
 
-### 3. 接收回调
+### 3. Receive callbacks
 
-协议服务将回调 POST 到宿主暴露的 HTTP 端点。SDK 提供与框架解耦的标准 handler（信封解析 → 分发提交 → 失败异步重试，始终应答 200）：
+The protocol service POSTs callbacks to an HTTP endpoint hosted by your application. The SDK ships a framework-agnostic handler (parse envelope → submit for dispatch → asynchronous retry on failure, always responding 200):
 
 ```go
-// gin 场景挂载
+// Mount it with gin.
 engine.POST("/callback", gin.WrapF(
     sdk_ipad.CallbackHTTPHandler(adapter.HandleCallback, sdk_ipad.DefaultCallbackHandlerOptions()),
 ))
 ```
 
-业务侧通过 Hook 声明关心的回调类型（完整示例见 `example_hooks.go`；端到端测试见 `dispatcher_test.go`）：
+Business code declares the callback types it cares about through hooks (full example in `example_hooks.go`; end-to-end coverage in `dispatcher_test.go`):
 
 ```go
-hook := myHook // 实现 sdk_ipad.Hook 接口
-hook.RegisterHandler(sdk_ipad.MsgCallback, handleMsgCallback)   // 102000 聊天消息
-hook.RegisterHandler(sdk_ipad.LoginSuccessReturn, handleLogin)  // 104001 登录成功
+hook := myHook // implements sdk_ipad.Hook
+hook.RegisterHandler(sdk_ipad.MsgCallback, handleMsgCallback)   // 102000 chat message
+hook.RegisterHandler(sdk_ipad.LoginSuccessReturn, handleLogin)  // 104001 login succeeded
 adapter.RegisterHook(hook)
 ```
 
-处理函数从**契约层**取强类型数据，不接触原始 JSON 字段名：
+Handlers consume strongly typed data from the **contract layer** and never touch raw JSON field names:
 
 ```go
 func handleMsgCallback(ctx *sdk_ipad.HookContext, msg *sdk_ipad.CallBackMsg) error {
-    env := msg.Envelope()              // 通用信封：msgtype/sender/receiver/is_room/...
+    env := msg.Envelope()              // common envelope: msgtype/sender/receiver/is_room/...
     switch env.MsgType {
     case sdk_ipad.ChatMsgText:
-        text := msg.AsTextMsg()        // 强类型 payload
+        text := msg.AsTextMsg()        // strongly typed payload
     case sdk_ipad.ChatMsgVoice:
-        voice := msg.AsVoiceMsg()      // voice_id/aes_key/voice_time 协议字段已收敛
+        voice := msg.AsVoiceMsg()      // voice_id/aes_key/voice_time normalized here
     }
     return nil
 }
 ```
 
-## 文件结构与各文件作用
+## Repository Layout
 
-### 入口与配置
+### Entry points and configuration
 
-| 文件 | 作用 |
+| File | Responsibility |
 |---|---|
-| `sdk.go` | 包文档与 SDK 主入口：`SdkIPad` 主结构体、`SdkConfig` 全局配置（分片/Worker 池/优先级队列（预留）/Logger 注入）、构造函数、账号上下文访问、回调入口 `HandleCallback`，附协议服务已知错误码参考表 |
-| `sdk_interface.go` | `SdkInterface` 接口定义：服务层使用的 SDK 方法集合（`SdkIPad` 隐式实现），供调用方 mock/替换 |
+| `sdk.go` | Package documentation and main entry point: the `SdkIPad` struct, the `SdkConfig` global configuration (shards / worker pool / priority queue (reserved) / logger injection), constructors, account context access, and the `HandleCallback` entry, plus a reference table of known protocol error codes |
+| `sdk_interface.go` | `SdkInterface` definition: the SDK methods used by the service layer (`SdkIPad` implements it implicitly), provided for mocking or substitution |
 
-### 主动调用 API（每接口一文件）
+### API calls (one file per endpoint)
 
-命名规则：`api_<域>_<方法名snake_case>.go`——如 `SendTextMsg` → `api_message_send_text_msg.go`、`RevokeMsg` → `api_message_revoke_msg.go`；域编号与 `docs-public/api` 一致；跨接口共享类型集中在 `api_common_types.go`。
+Naming rule: `api_<domain>_<method_snake_case>.go` — e.g. `SendTextMsg` → `api_message_send_text_msg.go`, `RevokeMsg` → `api_message_revoke_msg.go`. Domain numbers match `docs-public/api`. Types shared across endpoints live in `api_common_types.go`.
 
-| 域 | 文件前缀 | 接口 |
+| Domain | File prefix | Endpoints |
 |---|---|---|
-| 01 初始化 | `api_wx_init_*.go` | 实例初始化（含代理配置）、回调地址设置（HTTP/RABBITMQ）、运行实例查询、连接关闭 等 7 个 |
-| 02 登录 | `api_login_*.go` | 二维码获取、验证码校验、自动登录、退出登录、二次验证 5 个 |
-| 03 账号操作 | `api_account_*.go` | 头像设置、资料修改、个人二维码、封禁详情、对外名片、企业信息 8 个 |
-| 04 开放平台 | `api_open_platform_*.go` | 企业用户/开放平台 id 互转、群 id/chatid 互转 5 个 |
-| 05 标签 | `api_label_*.go` | 标签列表、增删改、标签与联系人关联 6 个 |
-| 06 CDN | `api_cdn_*.go` | 网络图片/视频/文件上传、大文件上传下载、微信文件下载、CDN 初始化与鉴权 12 个 |
-| 07 联系人操作 | `api_contact_*.go` | 手机号搜索、添加好友链路、内外部联系人列表、删除、备注、置顶/免打扰/拉黑 23 个 |
-| 08 朋友圈 | `api_moments_*.go` | 列表/详情、发布、删除、评论、点赞 7 个 |
-| 09 控制台群发 | `api_broadcast_*.go` | 群发消息确认 1 个 |
-| 10 聊天标签 | `api_chat_tag_*.go` | 会话标签增删改 1 个 |
-| 13 发送消息 | `api_message_*.go` | 各类消息发送、撤回、已读标记、语音转文字、消息同步、引用消息 21 个 |
-| 14 群操作 | `api_group_*.go` | 群列表、成员管理、建群、群公告、群名、邀请、二维码、欢迎语、退群、解散 25 个 |
+| 01 Initialization | `api_wx_init_*.go` | Instance initialization (including proxy settings), callback URL registration (HTTP/RABBITMQ), running instance queries, connection close — 7 |
+| 02 Login | `api_login_*.go` | QR code retrieval, verification code check, automatic login, logout, secondary verification — 5 |
+| 03 Account | `api_account_*.go` | Avatar update, profile update, personal QR code, ban details, business card, corp info — 8 |
+| 04 Open Platform | `api_open_platform_*.go` | Corp user / open platform ID conversion, group ID / chatid conversion — 5 |
+| 05 Labels | `api_label_*.go` | Label list, create/update/delete, label-contact association — 6 |
+| 06 CDN | `api_cdn_*.go` | Image/video/file upload, large-file upload and download, WeChat file download, CDN init and auth — 12 |
+| 07 Contacts | `api_contact_*.go` | Phone search, friend-add flows, internal/external contact lists, delete, remark, pin/mute/block — 23 |
+| 08 Moments | `api_moments_*.go` | List/detail, publish, delete, comment, like — 7 |
+| 09 Console Broadcast | `api_broadcast_*.go` | Broadcast task confirmation — 1 |
+| 10 Chat Tags | `api_chat_tag_*.go` | Session tag create/update/delete — 1 |
+| 13 Messaging | `api_message_*.go` | All message types, recall, mark-as-read, speech-to-text, sync, quote — 21 |
+| 14 Groups | `api_group_*.go` | Group list, member management, creation, announcement, name, invitation, QR code, welcome message, leave, dissolve — 25 |
 
-### 回调机制（接收、分发、并发）
+### Callback pipeline (receive, dispatch, concurrency)
 
-| 文件 | 作用 |
+| File | Responsibility |
 |---|---|
-| `callback_base.go` | 回调基础层：`CallBackMsg` 信封（type/uuid/json）、回调类型码常量（100xxx 登录 / 102xxx 消息 / 115xxx 群 / 116xxx 联系人 / 130xxx 标签）、`SendMsg` 内部发送结构 |
-| `chat_msgtype.go` | 聊天消息 `msgtype` 常量（ChatMsgText/Voice/Video/Revoke...，消息分发的分支依据） |
-| `callback_dispatcher.go` | `CallbackDispatcher` 回调分发器：Hook 注册（按消息类型，同类型按 Hook 优先级排序执行）、统计（DispatcherStats）、消息消费处理（消息优先级为预留，未参与调度） |
-| `dispatcher_adapter.go` | `DispatcherAdapter` 便捷封装：组装 Dispatcher + ShardManager + WorkerPool，业务侧只需 `HandleCallback(msg)` 一个入口 |
-| `shard_manager.go` | `ShardManager` 分片管理：一致性哈希将账号分片到固定分片，账号上下文（AccountContext）生命周期管理、过期清理、回调按账号路由 |
-| `shared_pool.go` | `SharedWorkerPool` 动态扩缩容 goroutine 工作池：Min/MaxWorkers、队列容量、优先级队列（PriorityQueueConfig，预留未实现） |
-| `callback_http.go` | `CallbackHTTPHandler` 传输层适配：标准 `net/http` handler（JSON 信封解析 → 分发 → 失败异步重试 3 次指数退避 → 始终应答 200），与 Web 框架解耦（gin 用 `gin.WrapF` 挂载） |
-| `example_hooks.go` | Hook 接口的示例实现与 Hook 管理器，业务侧 Hook 编写模板 |
+| `callback_base.go` | Callback foundation: the `CallBackMsg` envelope (type/uuid/json), callback type constants (100xxx login / 102xxx message / 115xxx group / 116xxx contact / 130xxx label), and the internal `SendMsg` structure |
+| `chat_msgtype.go` | Chat `msgtype` constants (ChatMsgText/Voice/Video/Revoke...), used to branch message dispatch |
+| `callback_dispatcher.go` | `CallbackDispatcher`: hook registration (per message type, ordered by hook priority within a type), statistics (`DispatcherStats`), and message consumption (message priority is reserved and not used for scheduling) |
+| `dispatcher_adapter.go` | `DispatcherAdapter` convenience layer: wires Dispatcher + ShardManager + WorkerPool so business code only calls `HandleCallback(msg)` |
+| `shard_manager.go` | `ShardManager`: consistent hashing assigns accounts to fixed shards; manages `AccountContext` lifecycle, expiry cleanup, and per-account callback routing |
+| `shared_pool.go` | `SharedWorkerPool`: dynamically scaling goroutine pool with Min/MaxWorkers, queue capacity, and a priority queue configuration (reserved, not implemented) |
+| `callback_http.go` | `CallbackHTTPHandler` transport adapter: a standard `net/http` handler (JSON envelope parsing → dispatch → asynchronous retry, 3 attempts with exponential backoff → always responds 200), decoupled from web frameworks (mount with `gin.WrapF`) |
+| `example_hooks.go` | Example hook implementations and the hook manager, serving as a template for business hooks |
 
-### 回调契约层（协议字段知识的唯一归口）
+### Callback contract layer (single source of truth for protocol fields)
 
-| 文件 | 作用 |
+| File | Responsibility |
 |---|---|
-| `callback_payload_msg.go` | 消息回调（102000）契约：`MessageEnvelope` 通用信封（8 字段）、`RevokePayload` 撤回定位、12 类消息 payload（系统/文本/GIF/小程序/链接/视频号/位置/红包/名片/媒体文件/视频/语音）与 `As*` 宽容访问器（gjson 语义，缺失返零值）；视频 `aes_key`/`aeskey` 双名兼容在此收敛 |
-| `callback_payload_account.go` | 其余域契约：登录域 5 类 payload（`AsScanReturn`/`AsLoginSuccess` 等，**严格** `json.Unmarshal` 语义返回 error）；群域（`RoomID`/`AsNewRoom`/`GroupMemberList`/`AsGroupNameChange` 三级回退）；联系人域（`AsFriendChangeList`/`AsInnerLabelChangeList`/`AsContactEventMsg`）；断连域 `DisconnectVid`（string/number 双型兼容） |
+| `callback_payload_msg.go` | Message callback (102000) contracts: `MessageEnvelope` (8 fields), `RevokePayload` for recall targeting, 12 message payload types (system/text/GIF/mini program/link/channel/location/red packet/card/media file/video/voice), and lenient `As*` accessors (gjson semantics, zero values when missing); the video `aes_key`/`aeskey` dual-name compatibility is resolved here |
+| `callback_payload_account.go` | Contracts for the remaining domains: login (5 payload types such as `AsScanReturn`/`AsLoginSuccess`, with **strict** `json.Unmarshal` semantics returning an error); group (`RoomID`/`AsNewRoom`/`GroupMemberList`/`AsGroupNameChange` with three-level fallback); contact (`AsFriendChangeList`/`AsInnerLabelChangeList`/`AsContactEventMsg`); disconnect (`DisconnectVid`, accepting both string and number) |
 
-> 解析语义约定：登录域历史上走 `json.Unmarshal` 判错丢弃，故保持严格语义；群/联系人/断连/消息域历史上走 gjson 逐字段取值，故保持宽容零值语义。**新增访问器必须与既有语义域一致。**
+> Parsing semantics: login payloads historically used `json.Unmarshal` and discarded malformed input, so strict semantics are preserved. Group, contact, disconnect, and message payloads historically read fields individually through gjson, so lenient zero-value semantics are preserved. **New accessors must follow the semantics of their domain.**
 
-### 基础设施
+### Infrastructure
 
-| 文件 | 作用 |
+| File | Responsibility |
 |---|---|
-| `http_client.go` | HTTP 客户端封装：JSON POST、网络错误自动重试、多协议服务器高并发调优的 `optimizedTransport`（连接池参数注释含容量推算依据） |
-| `flex_int64.go` | `FlexInt64` 容错类型：协议整数字段可能返回 number 或 string，统一兼容 |
+| `http_client.go` | HTTP client wrapper: JSON POST, automatic retry on network errors, and `optimizedTransport` tuned for high concurrency across protocol servers (connection-pool sizing rationale is documented in comments) |
+| `flex_int64.go` | `FlexInt64` tolerant type: protocol integer fields may arrive as either number or string |
 
-### 测试与示例
+### Tests
 
-| 文件 | 作用 |
+| File | Responsibility |
 |---|---|
-| `dispatcher_test.go` | 分发器用例（Hook 注册/消费、优先级队列标签） |
-| `dispatcher_adapter_test.go` | 适配器用例（独立实例，不触碰全局单例） |
-| `hook_manager_test.go` | Hook 管理器用例 |
-| `shard_manager_test.go` | 分片管理器用例 + 基准 |
-| `shared_pool_test.go` | Worker 池用例 + 基准 |
-| `callback_payload_msg_test.go` | 消息回调契约层用例（宽容解析/双名兼容/字符串视图） |
-| `callback_payload_account_test.go` | 登录/群/联系人/断连域契约用例（严格语义/三级回退/双型兼容） |
-| `callback_http_test.go` | 回调 HTTP 传输层用例（应答协议/异步重试） |
-| `flex_int64_test.go` | `FlexInt64` 双格式解析用例 |
-| `group_qrcode_test.go` | 群二维码接口解析用例 |
+| `dispatcher_test.go` | Dispatcher cases (hook registration/consumption, priority queue tags) |
+| `dispatcher_adapter_test.go` | Adapter cases (isolated instance, no global singleton) |
+| `hook_manager_test.go` | Hook manager cases |
+| `shard_manager_test.go` | Shard manager cases and benchmarks |
+| `shared_pool_test.go` | Worker pool cases and benchmarks |
+| `callback_payload_msg_test.go` | Message contract cases (lenient parsing, dual-name compatibility, string views) |
+| `callback_payload_account_test.go` | Login/group/contact/disconnect contract cases (strict semantics, three-level fallback, dual-type compatibility) |
+| `callback_http_test.go` | Callback HTTP transport cases (response protocol, asynchronous retry) |
+| `flex_int64_test.go` | `FlexInt64` dual-format parsing cases |
+| `group_qrcode_test.go` | Group QR code path normalization cases |
 
-### 文档
+### Documentation
 
-| 路径 | 内容 |
+| Path | Content |
 |---|---|
-| `ARCHITECTURE.md` | 架构说明：分片管理、共享 Worker 池、Hook 机制、消息处理流程、并发安全与生命周期（仓库根目录） |
-| `docs-public/` | 对外文档入口 `docs-public/README.md`：仅含 SDK 已封装的接口与回调 |
+| `ARCHITECTURE.md` | Architecture notes: sharding, shared worker pool, hook mechanism, message flow, concurrency safety, and lifecycle (repository root) |
+| `docs-public/` | Public documentation generated locally by `tools/docgen`; not committed to this repository |
 
-## 配置参考（SdkConfig）
+## Configuration Reference (SdkConfig)
 
-| 字段 | 说明 |
+| Field | Description |
 |---|---|
-| `ShardConfig` | 分片数/最大账号数/账号 TTL/清理间隔（ShardManager） |
-| `WorkerPool` | Worker 池 Min/Max、队列容量、扩容检查间隔（SharedWorkerPool） |
-| `PriorityQueue` | 优先级档位数、每档容量、高优容量（回调分发；**预留**：调度未实现，当前队列为单一 FIFO） |
-| `Logger` | `*zap.Logger`，宿主注入（Field 风格）；nil 时回退 `zap.L()`。SDK 不依赖宿主日志封装 |
+| `ShardConfig` | Shard count, max accounts, account TTL, cleanup interval (`ShardManager`) |
+| `WorkerPool` | Worker pool min/max, queue capacity, scale-up check interval (`SharedWorkerPool`) |
+| `PriorityQueue` | Priority levels, per-level capacity, high-priority capacity (callback dispatch; **reserved** — scheduling is not implemented and the queue is a single FIFO today) |
+| `Logger` | `*zap.Logger` injected by the host (field style); falls back to `zap.L()` when nil. The SDK does not depend on any host logging wrapper |
 
-## 独立仓库与发版
+## Standalone Module and Releases
 
-- 本仓库独立携带 `go.mod`/`go.sum`，在仓库目录内单独执行 `go build ./...`、`go test ./...`、`golangci-lint run ./...`。
-- 引用方式：宿主工程 `go get github.com/forage33/sdk-ipad@v0.1.0`（联调期可用 `replace` 指向本地副本）。
-- 独立发版：打语义化 tag（如 `v0.1.0`）并推送，宿主按 tag 升级版本即可，import 路径不变。
-- 协议字段演进时**只改本仓库**（优先契约层文件）。
+- The repository carries its own `go.mod`/`go.sum`; run `go build ./...`, `go test ./...`, and `golangci-lint run ./...` inside the repository directory.
+- Consume it with `go get github.com/forage33/sdk-ipad@v0.1.0` (use a `replace` directive pointing at a local copy during integration).
+- Release by pushing a semantic version tag (for example `v0.1.0`); consumers upgrade by tag and the import path stays unchanged.
+- When protocol fields evolve, change **this repository only** (prefer the contract-layer files).
 
-## 问题反馈
+## Contact
 
-- 通过 GitHub Issues 反馈：<https://github.com/forage33/sdk-ipad/issues>
+- QQ: 1801533361
+- GitHub Issues: <https://github.com/forage33/sdk-ipad/issues>
 
-## 免责声明
+## Disclaimer
 
-- 本项目为通用 HTTP 客户端封装，仅提供与调用方自建或已获授权的协议服务通信的能力，不包含任何协议实现、注入或绕过代码。
-- 本项目与腾讯公司无任何关联，未获其授权或认可；“企业微信”“微信”等为腾讯公司商标，此处仅用于客观描述适用场景。
-- 使用者应确保对所操作的账号、数据及协议服务拥有合法授权，并自行遵守所属平台服务条款与所在地法律法规；因使用本项目产生的一切后果由使用者自行承担。
-- 本项目按“现状”提供，不附带任何明示或暗示的担保。
+- This project is a generic HTTP client wrapper. It only provides the ability to communicate with a self-hosted or duly authorized protocol service, and contains no protocol implementation, injection, or bypass code.
+- This project is not affiliated with, endorsed by, or authorized by Tencent. "WeCom", "WeChat Work", and "WeChat" are trademarks of Tencent and are used here only to describe the applicable scenario objectively.
+- Users must ensure they have lawful authorization for the accounts, data, and protocol services they operate, and must comply with the terms of service of the relevant platform and all applicable laws and regulations. Any consequences arising from the use of this project are the sole responsibility of the user.
+- This project is provided "as is", without warranty of any kind, express or implied.
