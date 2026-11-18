@@ -1,8 +1,8 @@
 # sdk-ipad — WeCom iPad Protocol SDK
 
-A standalone Go module (`module github.com/forage33/sdk-ipad`) that wraps every interaction with a WeCom iPad protocol service: **API calls**, the **callback dispatch pipeline**, the **callback data contracts**, and the **HTTP transport adapter**.
+A standalone Go module (`module github.com/forage333/sdk-ipad`) that wraps every interaction with a WeCom iPad protocol service: **API calls**, the **callback dispatch pipeline**, the **callback data contracts**, and the **HTTP transport adapter**.
 
-The module depends only on the standard library plus `go.uber.org/zap` and `github.com/tidwall/gjson`. It has no dependency on any host application, so it can be built, tested, and tagged independently. Repository: <https://github.com/forage33/sdk-ipad>.
+The module depends only on the standard library plus `go.uber.org/zap` and `github.com/tidwall/gjson`. It has no dependency on any host application, so it can be built, tested, and tagged independently. Repository: <https://github.com/forage333/sdk-ipad>.
 
 Architecture notes (sharding, shared worker pool, hook mechanism, message flow, concurrency safety, and lifecycle) are documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -159,14 +159,14 @@ Naming rule: `api_<domain>_<method_snake_case>.go` — e.g. `SendTextMsg` → `a
 ## Standalone Module and Releases
 
 - The repository carries its own `go.mod`/`go.sum`; run `go build ./...`, `go test ./...`, and `golangci-lint run ./...` inside the repository directory.
-- Consume it with `go get github.com/forage33/sdk-ipad@v0.1.0` (use a `replace` directive pointing at a local copy during integration).
+- Consume it with `go get github.com/forage333/sdk-ipad@v0.1.0` (use a `replace` directive pointing at a local copy during integration).
 - Release by pushing a semantic version tag (for example `v0.1.0`); consumers upgrade by tag and the import path stays unchanged.
 - When protocol fields evolve, change **this repository only** (prefer the contract-layer files).
 
 ## Contact
 
 - QQ: 1801533361
-- GitHub Issues: <https://github.com/forage33/sdk-ipad/issues>
+- GitHub Issues: <https://github.com/forage333/sdk-ipad/issues>
 
 ## Disclaimer
 

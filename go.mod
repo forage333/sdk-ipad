@@ -2,7 +2,7 @@
 //
 // 仅依赖标准库、gjson 与 zap，可独立编译、测试、打 tag 发布。
 // 宿主工程通过 go.mod 的 require 引用本模块（联调期可用 replace 指向本地副本）。
-module github.com/forage33/sdk-ipad
+module github.com/forage333/sdk-ipad
 
 go 1.25.0
 
