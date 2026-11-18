@@ -107,3 +107,8 @@ func handleMsgCallback(ctx *sdk_ipad.HookContext, msg *sdk_ipad.CallBackMsg) err
 
 - 源码仓库：<https://github.com/forage33/sdk-ipad>
 - 本文档仅覆盖 SDK 已封装的接口与回调；协议字段语义以 SDK 契约层定义为准。
+
+## 免责声明
+
+- 本文档仅描述 SDK 自身的接口与数据契约；SDK 与腾讯公司无关联，“企业微信”“微信”等商标仅用于客观描述适用场景。
+- 使用 SDK 及其对接的协议服务时，应确保拥有合法授权，并自行遵守所属平台服务条款与所在地法律法规。

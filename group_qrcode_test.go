@@ -10,13 +10,13 @@ func TestNormalizeQrCodePath(t *testing.T) {
 	}{
 		{
 			name: "windows 反斜杠路径转正斜杠",
-			in:   `http://{host}:8060/download\RoomQrCode\10956327057102598.jpg`,
-			want: "http://{host}:8060/download/RoomQrCode/10956327057102598.jpg",
+			in:   `http://host:8060/download\RoomQrCode\10956327057102598.jpg`,
+			want: "http://host:8060/download/RoomQrCode/10956327057102598.jpg",
 		},
 		{
 			name: "正斜杠 URL 保持不变",
-			in:   "http://{host}:8083/RoomQrCode/10696052955016166.jpg",
-			want: "http://{host}:8083/RoomQrCode/10696052955016166.jpg",
+			in:   "http://host:8083/RoomQrCode/10696052955016166.jpg",
+			want: "http://host:8083/RoomQrCode/10696052955016166.jpg",
 		},
 		{
 			name: "混合分隔符全部转正斜杠",

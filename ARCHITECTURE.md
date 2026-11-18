@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-sdk-ipad 是 业务系统 系统的核心包，负责：
+sdk-ipad 是业务系统的核心包，负责：
 - 封装企业微信 iPad 协议的 HTTP API 调用（14个业务模块）
 - 处理协议服务器的多账号高并发回调消息（8个回调模块）
 
@@ -109,7 +109,7 @@ type DispatcherAdapter struct {
 
 ```go
 type Hook interface {
-    Handle(ctx *HookContext, msg *msg_struct.CallBackMsg) error
+    Handle(ctx *HookContext, msg *CallBackMsg) error
     Priority() int
     Name() string
 }
@@ -216,7 +216,7 @@ config := &sdk_ipad.SdkConfig{
 sdk := sdk_ipad.NewSdkIPadWithConfig(config)
 
 // 直接使用 SDK 处理回调
-err = sdk.HandleCallback(&msg, func(ctx *sdk_ipad.AccountContext, msg *msg_struct.CallBackMsg) error {
+err = sdk.HandleCallback(&msg, func(ctx *sdk_ipad.AccountContext, msg *sdk_ipad.CallBackMsg) error {
     return processMessage(ctx, msg)
 })
 ```
@@ -245,11 +245,11 @@ type MyBusinessHook struct {
     priority int
 }
 
-func (h *MyBusinessHook) Handle(ctx *sdk_ipad.HookContext, msg *msg_struct.CallBackMsg) error {
+func (h *MyBusinessHook) Handle(ctx *sdk_ipad.HookContext, msg *sdk_ipad.CallBackMsg) error {
     // ctx.SDK 可访问 SDK 实例
     // ctx.AccountCtx 可访问账号上下文
     switch msg.Type {
-    case msg_struct.MsgCallback:
+    case sdk_ipad.MsgCallback:
         return h.handleMessage(ctx, msg)
     default:
         return nil
@@ -265,8 +265,8 @@ func (h *MyBusinessHook) Name() string  { return h.name }
 ```go
 adapter := sdk_ipad.GetDefaultAdapter()
 hook := &MyBusinessHook{name: "biz-hook", priority: 1}
-adapter.RegisterHook(msg_struct.MsgCallback, hook)
-adapter.RegisterHook(msg_struct.ApplyFriend, hook)
+adapter.RegisterHook(sdk_ipad.MsgCallback, hook)
+adapter.RegisterHook(sdk_ipad.ApplyFriend, hook)
 ```
 
 ### 5.3 HookManager（批量管理）
@@ -275,7 +275,7 @@ adapter.RegisterHook(msg_struct.ApplyFriend, hook)
 hm := sdk_ipad.NewHookManager()
 hm.RegisterHook(hook1)
 hm.RegisterHook(hook2)
-hm.RegisterAllToDispatcher(dispatcher, []int{msg_struct.MsgCallback, msg_struct.ApplyFriend})
+hm.RegisterAllToDispatcher(dispatcher, []int{sdk_ipad.MsgCallback, sdk_ipad.ApplyFriend})
 ```
 
 ### 5.4 AccountHook（账号级生命周期）
